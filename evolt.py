@@ -5,9 +5,12 @@
 
 import pygame
 from sys import exit
+import message
+from gameobject import GameObject
 # Uncommented, not being used yet
 # from random import randint
 
+__name__ = "evolt.py"
 __author__ = "Tristan Arthur"
 __copyright__ = ""
 __credits__ = []
@@ -20,77 +23,34 @@ __status__ = "Prototype"
 # TODO: Smoother jumps
 # TODO: Non-flat terrain
 # TODO: Change move speed to go off time not frames
+# TODO: Load and display maps from file
 
 
-# TODO: fix debug and error display and save
-class Messenger(object):
-
-    def __init__(self, show_debug=True, show_error=True, save_debug=False, save_error=False):
-        self.show_debug = show_debug
-        self.show_error = show_error
-        self.save_debug = save_debug
-        self.save_error = save_error
-        self.debug_to_save = []
-        self.error_to_save = []
-
-    def debug(self, msg):
-        print(msg)
-        if self.save_debug:
-            self.debug_to_save += [msg]
-
-
-
-class GameObject(object):
-    """Game object : tracks coordinates, animations and surfaces"""
-
-    def __init__(self, animation_locations, pos, animation_speed=30, move_speed=3):
-
-        """
-        Game Object, holds all data for objects that move and have animations and positions
-        :param animation_locations:
-        :param pos:
-        :param animation_speed:
-        :param move_speed:
-        """
-
-        # How many pixels the sprite will move per frame
-        self.move_speed = move_speed
-
-        # List of all the surfaces used for the object. Considered animation if more than 1.
-        self.animation_locations = animation_locations
-        
-        # All surface objects
-        self.surfaces = []
-
-        # Set animation speed, ms change
-        self.animation_speed = animation_speed
-        
-        for animation in self.animation_locations:
-            # Add listed image as part of object animation
-            self.surfaces += [pygame.image.load(animation)]
-        self.x, self.y = pos
-
-        # Current frame of sprite animation in use
-        self.current_frame = 0
-
-        # The last time in ms that a new sprite animation was displayed
-        self.last_animation_time = 0
-
-    def get_next_frame(self, ms_current_time, constant=True):
-        if ms_current_time >= self.last_animation_time + self.animation_speed and constant:
-            # Next player animation server
-            self.current_frame += 1
-            # set last animation time to current time
-            self.last_animation_time = ms_current_time
-            # If current animation is out of bounds
-            if self.current_frame >= len(self.surfaces):
-                # Go back to first animation surface
-                self.current_frame = 0
-        return self.surfaces[self.current_frame]
-
-    def __iter__(self):
-        yield from self.surfaces
-
+class Map(object):
+    def __init__(self, file_to_load):
+        map_raw = open(file_to_load).read()
+        self.positions = []
+        self.sprites = []
+        self.animation_times = []
+        self.move_times = []
+        self.num_of_objects = 0
+        start_pos = 0
+        start_sprites = 0
+        for i, char in enumerate(map_raw):
+            if char == "{":
+                start_pos = i
+            if char == "<":
+                pos = map_raw[start_pos + 1:i]
+                pos = pos.split(",")
+                self.positions += [[int(pos[0]), int(pos[1])]]
+            if char == "[":
+                start_sprites = i
+            if char == "]":
+                self.sprites += [map_raw[start_sprites + 1:i].strip("'")]
+            if char == ":":
+                self.animation_times += [int(map_raw[i - 1])]
+                self.move_times += [int(map_raw[i + 1])]
+        self.num_of_objects = len(self.positions)
 
 # TODO: destructible terrain
 class TerrainObject(object):
@@ -187,18 +147,6 @@ class Text(object):
         self.surface = fnt_text.render(text, True, colour)
 
 
-# Function to detect collision between a point and a rectangle
-def point_rectangle_collide(surf, surf_pos, point):
-    """
-    Detects collision between a point and a rectangle
-    :rtype: bool
-    """
-    if point[0] > surf_pos[0] < surf_pos[0] + surf.get_width() > point[0]:
-        if point[1] > surf_pos[1] < surf_pos[1] + surf.get_height() > point[1]:
-            return True
-    return False
-
-
 # TODO: Finish rectangle on rectangle collision
 # Function to detect collision between a rectangle and a rectangle
 def rectangle_rectangle_collide():
@@ -210,29 +158,30 @@ WINDOW_HEIGHT = 650
 
 # Initialise PyGame
 pygame.init()
-
-# Initialise PyGame clock
 clock = pygame.time.Clock()
-
-# Initialise PyGame music & sound
 pygame.mixer.init()
-
-# Initialise PyGame font & text
 pygame.font.init()
 
-# Create main surface for drawing
 SURFACE = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 
 # Initialise & load objects
 current_player_surface = 0
-player = GameObject(["proto/player/player_1.png", "proto/player/player_2.png", "proto/player/player_3.png",
-                     "proto/player/player_4.png", "proto/player/player_5.png", "proto/player/player_6.png",
-                     "proto/player/player_7.png"], ((WINDOW_WIDTH // 2) - 16, 50), 2000, 5)
+player = GameObject([pygame.image.load("assets/player/leg_day.png")],
+                    ["assets/player/leg_day.png"], ((WINDOW_WIDTH // 2) - 16, 50), 2000, 5)
 
-terrain = Terrain(650, 650, 500)
+game_map = Map("map_text.txt")
+objects = []
+
+for num in range(game_map.num_of_objects):
+    objects += [GameObject([pygame.image.load(game_map.sprites[num])],
+                           game_map.sprites[num], game_map.positions[num], game_map.animation_times[num],
+                           game_map.move_times[num])]
+print(objects)
+
+msg = message.Messenger()
 
 # Set caption for main window
-pygame.display.set_caption("Evolt V0.0.0.2")
+pygame.display.set_caption(__name__ + " " + __version__)
 
 # Start timer for game
 ms_time = 0
@@ -288,18 +237,18 @@ while True:
     fall_frame = False
 
     # Get the x, y values of all terrain tiles
-    for x, y in terrain.x_map.items():
+    # for x, y in terrain.x_map.items():
 
         # If player x is in the bounds of the terrain
-        if x + world_skew_x <= player.x + 16 <= x + world_skew_x + 32:
+        # if x + world_skew_x <= player.x + 16 <= x + world_skew_x + 32:
             # If player is above terrain
-            if player.y + 66 <= y + world_skew_y:
-                player.y += 5
-            else:
-                jump_in_progress = False
+            # if player.y + 66 <= y + world_skew_y:
+                # player.y += 5
+            # else:
+                # jump_in_progress = False
             # Has fall calculations taken place this frame?
-            fall_frame = True
-            break
+            # fall_frame = True
+            # break
 
     # If fall calculations have not taken place lower player by 5
     if not fall_frame:
@@ -321,7 +270,7 @@ while True:
         if event.type == pygame.MOUSEBUTTONDOWN:
             
             # Get (x, y) coordinates of click & update mouse_pos
-            mouse_pos = event.pos
+            pass
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE and not jump_in_progress:
@@ -330,10 +279,9 @@ while True:
 
     # Draw
     # For each tile in terrain class
-    for terrain_tile in terrain:
-
+    for tile in objects:
         # Display tile at appropriate x, y + player x, y/skew
-        SURFACE.blit(terrain_tile.surface, (terrain_tile.x + world_skew_x, terrain_tile.y + world_skew_y))
+        SURFACE.blit(tile.get_current_frame(), (tile.x + world_skew_x, tile.y + world_skew_y))
 
     SURFACE.blit(player.get_next_frame(ms_time, player_running), (player.x, player.y))
 
