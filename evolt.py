@@ -24,8 +24,9 @@ __status__ = "Prototype"
 
 # TODO: Smoother jumps
 # TODO: Change move speed to go off time not frames
-# TODO: Load and display maps from file
 # TODO: Finish rectangle on rectangle collision
+# TODO: Load and display maps from file
+# TODO:     Fix Serialization plz
 
 
 # Function to detect collision between a rectangle and a rectangle
